@@ -114,7 +114,7 @@ class GoogleSheetsApi {
     await _sheetsApi!.spreadsheets.values.update(
       valueRange,
       AppConstants.spreadsheetId,
-      'Categorias!A$rowIndex:B$rowIndex',
+      'Categorías!A$rowIndex:B$rowIndex',
       valueInputOption: 'USER_ENTERED',
     );
   }
@@ -128,7 +128,7 @@ class GoogleSheetsApi {
     await _sheetsApi!.spreadsheets.values.clear(
       request,
       AppConstants.spreadsheetId,
-      'Categorias!A$rowIndex:B$rowIndex',
+      'Categorías!A$rowIndex:B$rowIndex',
     );
   }
 
