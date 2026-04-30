@@ -5,26 +5,104 @@ import '../../domain/providers/inventory_provider.dart';
 import 'product_detail_screen.dart';
 import 'product_form_screen.dart';
 
-class ProductsScreen extends ConsumerWidget {
-  const ProductsScreen({super.key});
+class ProductsScreen extends ConsumerStatefulWidget {
+  final String? initialCategoryId;
+  final bool showLowStockOnly;
+
+  const ProductsScreen({
+    super.key,
+    this.initialCategoryId,
+    this.showLowStockOnly = false,
+  });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProductsScreen> createState() => _ProductsScreenState();
+}
+
+class _ProductsScreenState extends ConsumerState<ProductsScreen> {
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final productsAsync = ref.watch(productsProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Productos'),
+        title: Text(widget.showLowStockOnly ? 'Alertas de Stock' : 'Productos'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(60),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Buscar producto o SKU...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          setState(() {
+                            _searchQuery = '';
+                            _searchController.clear();
+                          });
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value.toLowerCase();
+                });
+              },
+            ),
+          ),
+        ),
       ),
       body: productsAsync.when(
         data: (productsWithStock) {
-          if (productsWithStock.isEmpty) {
-            return const Center(child: Text('No hay productos registrados.'));
+          // Filtrar por categoría si se proporcionó una
+          var filtered = productsWithStock;
+          if (widget.initialCategoryId != null) {
+            filtered = filtered.where((p) => p.product.categoryId == widget.initialCategoryId).toList();
           }
+
+          // Filtrar por alertas de stock
+          if (widget.showLowStockOnly) {
+            filtered = filtered.where((p) => p.isLowStock).toList();
+          }
+
+          // Filtrar por búsqueda
+          if (_searchQuery.isNotEmpty) {
+            filtered = filtered.where((p) {
+              final name = p.product.name.toLowerCase();
+              final sku = p.product.skuId.toLowerCase();
+              return name.contains(_searchQuery) || sku.contains(_searchQuery);
+            }).toList();
+          }
+
+          if (filtered.isEmpty) {
+            return const Center(child: Text('No se encontraron productos.'));
+          }
+
           return ListView.builder(
-            itemCount: productsWithStock.length,
+            itemCount: filtered.length,
             itemBuilder: (context, index) {
-              final item = productsWithStock[index];
+              final item = filtered[index];
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: ListTile(
@@ -38,89 +116,19 @@ class ProductsScreen extends ConsumerWidget {
                   ),
                   title: Text(item.product.name),
                   subtitle: Text('SKU: ${item.product.skuId}'),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: item.isLowStock ? Colors.red[100] : Colors.green[100],
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Text(
-                          'Stock: ${item.currentStock}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: item.isLowStock ? Colors.red[900] : Colors.green[900],
-                          ),
-                        ),
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: item.isLowStock ? Colors.red[100] : Colors.green[100],
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      'Stock: ${item.currentStock}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: item.isLowStock ? Colors.red[900] : Colors.green[900],
                       ),
-                      PopupMenuButton<String>(
-                        onSelected: (value) async {
-                          if (value == 'edit') {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ProductFormScreen(productWithStock: item),
-                              ),
-                            );
-                          } else if (value == 'delete') {
-                            final confirm = await showDialog<bool>(
-                              context: context,
-                              builder: (ctx) => AlertDialog(
-                                title: const Text('Eliminar Producto'),
-                                content: Text('¿Seguro que deseas eliminar "${item.product.name}"?'),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(ctx, false),
-                                    child: const Text('Cancelar'),
-                                  ),
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(ctx, true),
-                                    child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
-                                  ),
-                                ],
-                              ),
-                            );
-
-                            if (confirm == true) {
-                              try {
-                                await ref.read(inventoryControllerProvider).deleteProduct(item.product.skuId);
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Producto eliminado')),
-                                  );
-                                }
-                              } catch (e) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Error: $e')),
-                                  );
-                                }
-                              }
-                            }
-                          }
-                        },
-                        itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                          const PopupMenuItem<String>(
-                            value: 'edit',
-                            child: ListTile(
-                              leading: Icon(Icons.edit, color: Colors.blue),
-                              title: Text('Editar'),
-                              contentPadding: EdgeInsets.zero,
-                            ),
-                          ),
-                          const PopupMenuItem<String>(
-                            value: 'delete',
-                            child: ListTile(
-                              leading: Icon(Icons.delete, color: Colors.red),
-                              title: Text('Eliminar'),
-                              contentPadding: EdgeInsets.zero,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                    ),
                   ),
                   onTap: () {
                     Navigator.push(

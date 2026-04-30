@@ -42,7 +42,8 @@ final productsProvider = FutureProvider<List<ProductWithStock>>((ref) async {
     int totalOut = 0;
 
     for (var mov in movements) {
-      if (mov.skuId == product.skuId) {
+      if (mov.productName == product.name) {
+
         if (mov.type.toLowerCase() == 'entrada') {
           totalIn += mov.quantity;
         } else if (mov.type.toLowerCase() == 'salida') {

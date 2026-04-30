@@ -1,11 +1,14 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../data/models/product.dart';
 import '../../domain/providers/inventory_provider.dart';
 
 class ProductFormScreen extends ConsumerStatefulWidget {
-  final ProductWithStock? productWithStock; // null para crear, valor para editar
+  final ProductWithStock? productWithStock;
 
   const ProductFormScreen({super.key, this.productWithStock});
 
@@ -25,6 +28,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   late TextEditingController _initialStockController;
 
   bool _isLoading = false;
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
@@ -33,7 +37,6 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     _skuController = TextEditingController(text: p?.skuId ?? '');
     _nameController = TextEditingController(text: p?.name ?? '');
     
-    // Solo generar SKU automáticamente para productos nuevos
     if (widget.productWithStock == null) {
       _nameController.addListener(_onNameChanged);
     }
@@ -69,6 +72,58 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     
     final nextNum = (maxNum + 1).toString().padLeft(3, '0');
     _skuController.text = '$prefix$nextNum';
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: source,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
+      if (pickedFile != null) {
+        setState(() {
+          // En una app real con Google Sheets, aquí deberías subir la imagen a un storage (Firebase, Cloudinary, etc)
+          // y obtener la URL. Por ahora, usaremos la ruta local o la URL si es web.
+          _imageController.text = pickedFile.path;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al capturar imagen: $e')),
+        );
+      }
+    }
+  }
+
+  void _showImageSourceActionSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Galería'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera),
+              title: const Text('Cámara'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.camera);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -131,7 +186,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   Widget build(BuildContext context) {
     final isEditing = widget.productWithStock != null;
     final categoriesAsync = ref.watch(categoriesProvider);
-    ref.watch(productsProvider); // Asegurar que los productos estén cargados para el SKU
+    ref.watch(productsProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -146,13 +201,46 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // --- SECCIÓN DE IMAGEN ---
+                  Center(
+                    child: GestureDetector(
+                      onTap: () => _showImageSourceActionSheet(context),
+                      child: Container(
+                        height: 150,
+                        width: 150,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey[300]!),
+                        ),
+                        child: _imageController.text.isEmpty
+                            ? const Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.add_a_photo, size: 40, color: Colors.grey),
+                                  SizedBox(height: 8),
+                                  Text('Añadir Foto', style: TextStyle(color: Colors.grey)),
+                                ],
+                              )
+                            : ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: _imageController.text.startsWith('http')
+                                    ? Image.network(_imageController.text, fit: BoxFit.cover)
+                                    : (kIsWeb 
+                                        ? Image.network(_imageController.text, fit: BoxFit.cover)
+                                        : Image.file(File(_imageController.text), fit: BoxFit.cover)),
+                              ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
                   TextFormField(
                     controller: _skuController,
                     decoration: const InputDecoration(
                       labelText: 'SKU ID',
                       border: OutlineInputBorder(),
                     ),
-                    enabled: false, // El SKU se genera automáticamente y no cambia
+                    enabled: false,
                     validator: (value) => value == null || value.trim().isEmpty ? 'Requerido' : null,
                   ),
                   const SizedBox(height: 16),
@@ -185,11 +273,13 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                     validator: (value) => value == null ? 'Selecciona una categoría' : null,
                   ),
                   const SizedBox(height: 16),
+                  // Opcional: Permitir pegar URL manualmente si prefieren
                   TextFormField(
                     controller: _imageController,
                     decoration: const InputDecoration(
-                      labelText: 'URL de Imagen',
+                      labelText: 'URL de Imagen o Ruta',
                       border: OutlineInputBorder(),
+                      helperText: 'Puedes usar la cámara arriba o pegar una URL aquí',
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -228,7 +318,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                       border: OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.number,
-                    enabled: !isEditing, // Evitar cambiar el stock inicial en edición
+                    enabled: !isEditing,
                     validator: (value) => value == null || value.isEmpty ? 'Requerido' : null,
                   ),
                   const SizedBox(height: 32),
