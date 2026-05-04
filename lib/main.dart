@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/theme.dart';
-import 'presentation/screens/dashboard_screen.dart';
+import 'domain/providers/auth_provider.dart';
+import 'presentation/screens/login_screen.dart';
 
 void main() {
   runApp(
@@ -12,15 +13,15 @@ void main() {
   );
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends ConsumerWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp(
-      title: 'Inventario Artículos',
+      title: 'LogiStock — Inventario',
       theme: AppTheme.lightTheme,
-      home: const DashboardScreen(),
+      home: const LoginScreen(), // El login verifica sesión guardada antes de mostrar el form
       debugShowCheckedModeBanner: false,
     );
   }
