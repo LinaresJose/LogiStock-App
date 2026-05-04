@@ -271,10 +271,9 @@ class _AddMovementScreenState extends ConsumerState<AddMovementScreen> {
                               filled: true,
                             ),
                             validator: (v) {
-                              if (_registrarCosto) {
-                                if (v == null || v.isEmpty) return 'Ingresa el costo';
+                              if (_registrarCosto && v != null && v.isNotEmpty) {
                                 if (double.tryParse(v) == null) return 'Número inválido';
-                                if (double.parse(v) <= 0) return 'Debe ser mayor a 0';
+                                if (double.parse(v) < 0) return 'No puede ser negativo';
                               }
                               return null;
                             },
