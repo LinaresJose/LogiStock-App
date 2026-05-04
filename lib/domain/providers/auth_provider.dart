@@ -8,7 +8,12 @@ import '../../data/models/user_model.dart';
 // ─── Provider de sesión activa ───────────────────────────────────────────────
 
 /// Almacena el usuario autenticado actualmente. `null` = no autenticado.
-final currentUserProvider = StateProvider<UserModel?>((ref) => null);
+final currentUserProvider = NotifierProvider<CurrentUserNotifier, UserModel?>(CurrentUserNotifier.new);
+
+class CurrentUserNotifier extends Notifier<UserModel?> {
+  @override
+  UserModel? build() => null;
+}
 
 /// Acceso directo a los permisos del usuario activo (nunca null — usa consulta como default).
 final currentPermissionsProvider = Provider<RolePermissions>((ref) {

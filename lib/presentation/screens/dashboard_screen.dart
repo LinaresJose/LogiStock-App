@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/providers/inventory_provider.dart';
 import '../../domain/providers/auth_provider.dart';
+import '../../core/permissions.dart';
 import '../../presentation/widgets/permission_guard.dart';
 import 'products_screen.dart';
 import 'add_movement_screen.dart';
