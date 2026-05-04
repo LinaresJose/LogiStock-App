@@ -10,6 +10,8 @@ import 'categories_screen.dart';
 import 'product_form_screen.dart';
 import 'users_screen.dart';
 import 'login_screen.dart';
+import 'movements_history_screen.dart';
+import 'costs_report_screen.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -256,6 +258,28 @@ class DashboardScreen extends ConsumerWidget {
                     color: Colors.blueGrey,
                     onTap: () => Navigator.push(context,
                         MaterialPageRoute(builder: (_) => const ProductsScreen()))),
+                // Historial Global (todos)
+                _buildSecondaryAction(context,
+                    label: 'Historial',
+                    icon: Icons.history,
+                    color: Colors.purple,
+                    onTap: () => Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const MovementsHistoryScreen()))),
+                // Reporte de Costos (admin+)
+                PermissionGuard(
+                  check: (p) => p.canManageProducts,
+                  child: _buildSecondaryAction(context,
+                      label: 'Costos',
+                      icon: Icons.attach_money,
+                      color: Colors.deepOrange,
+                      onTap: () => Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const CostsReportScreen()))),
+                  fallback: _buildSecondaryAction(context,
+                      label: 'Costos',
+                      icon: Icons.attach_money,
+                      color: Colors.grey,
+                      onTap: null),
+                ),
               ],
             ),
           ],
