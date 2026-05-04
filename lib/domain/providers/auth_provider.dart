@@ -13,6 +13,7 @@ final currentUserProvider = NotifierProvider<CurrentUserNotifier, UserModel?>(Cu
 class CurrentUserNotifier extends Notifier<UserModel?> {
   @override
   UserModel? build() => null;
+  void setUser(UserModel? user) => state = user;
 }
 
 /// Acceso directo a los permisos del usuario activo (nunca null — usa consulta como default).
@@ -56,8 +57,10 @@ class AuthController {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('session_user_id', user.userId);
     await prefs.setString('session_email', user.email);
+    await prefs.setString('session_name', user.nombre);
+    await prefs.setString('session_role', user.rol.key);
 
-    _ref.read(currentUserProvider.notifier).state = user;
+    _ref.read(currentUserProvider.notifier).setUser(user);
     return null; // Sin error = éxito
   }
 
@@ -66,7 +69,9 @@ class AuthController {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('session_user_id');
     await prefs.remove('session_email');
-    _ref.read(currentUserProvider.notifier).state = null;
+    await prefs.remove('session_name');
+    await prefs.remove('session_role');
+    _ref.read(currentUserProvider.notifier).setUser(null);
   }
 
   /// Intenta restaurar la sesión guardada en SharedPreferences al iniciar la app.
@@ -75,16 +80,22 @@ class AuthController {
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedEmail = prefs.getString('session_email');
-      if (savedEmail == null) return false;
-
-      // Buscamos al usuario sin reverificar contraseña (ya fue verificada)
-      final users = await AuthSheetsApi.getUsers();
-      final user = users.where((u) =>
-          u.email.toLowerCase() == savedEmail.toLowerCase() && u.activo
-      ).firstOrNull;
-
-      if (user != null) {
-        _ref.read(currentUserProvider.notifier).state = user;
+      final savedId = prefs.getString('session_user_id');
+      final savedName = prefs.getString('session_name');
+      final savedRole = prefs.getString('session_role');
+      
+      if (savedEmail != null && savedId != null && savedRole != null) {
+        final user = UserModel(
+          userId: savedId,
+          nombre: savedName ?? 'Usuario',
+          email: savedEmail,
+          passwordHash: '', // No guardamos password
+          rol: UserRoleLabel.fromKey(savedRole),
+          activo: true,
+          fechaCreacion: '',
+          creadoPor: 'sistema',
+        );
+        _ref.read(currentUserProvider.notifier).setUser(user);
         return true;
       }
     } catch (_) {}
