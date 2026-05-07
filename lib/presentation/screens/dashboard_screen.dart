@@ -13,6 +13,7 @@ import 'users_screen.dart';
 import 'login_screen.dart';
 import 'movements_history_screen.dart';
 import 'costs_report_screen.dart';
+import '../../core/utils/apk_sharer.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -44,6 +45,29 @@ class DashboardScreen extends ConsumerWidget {
           ],
         ),
         actions: [
+          // ── Botón Compartir App ───────────────────────────────────────────
+          IconButton(
+            icon: const Icon(Icons.share, color: Colors.white),
+            tooltip: 'Compartir App',
+            onPressed: () async {
+              try {
+                // Muestra un indicador de carga mientras procesa
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Preparando archivo...'), duration: Duration(seconds: 1)),
+                );
+                await ApkSharer.shareApp();
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error al compartir: $e'),
+                      backgroundColor: Colors.red.shade700,
+                    ),
+                  );
+                }
+              }
+            },
+          ),
           // ── Botón Usuarios (solo superAdmin) ──────────────────────────────
           PermissionGuard(
             check: (p) => p.canManageUsers,

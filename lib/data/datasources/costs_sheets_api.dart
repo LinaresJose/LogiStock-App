@@ -22,6 +22,27 @@ class CostsSheetsApi {
     _sheetsApi = sheets.SheetsApi(client);
   }
 
+  // ── Auxiliares ──────────────────────────────────────────────────────────────
+
+  static Future<String> _getNextId(String range) async {
+    await _init();
+    final response = await _sheetsApi!.spreadsheets.values.get(
+      AppConstants.spreadsheetId,
+      range,
+    );
+    final rows = response.values ?? [];
+    if (rows.isEmpty) return '1';
+
+    int maxId = 0;
+    for (var row in rows) {
+      if (row.isNotEmpty) {
+        final id = int.tryParse(row[0].toString()) ?? 0;
+        if (id > maxId) maxId = id;
+      }
+    }
+    return (maxId + 1).toString();
+  }
+
   // ─── Consultas ──────────────────────────────────────────────────────────────
 
   /// Devuelve TODAS las entradas del historial de costos.
@@ -38,15 +59,15 @@ class CostsSheetsApi {
         .toList();
   }
 
-  /// Devuelve el historial de costos filtrado por [skuId].
-  static Future<List<CostEntryModel>> getCostHistory(String skuId) async {
+  /// Devuelve el historial de costos filtrado por [productName].
+  static Future<List<CostEntryModel>> getCostHistory(String productName) async {
     final all = await getAllCostEntries();
-    return all.where((e) => e.skuId == skuId).toList();
+    return all.where((e) => e.productName == productName).toList();
   }
 
   /// Calcula el costo promedio ponderado actual para un producto.
-  static Future<double> getAverageCost(String skuId) async {
-    final history = await getCostHistory(skuId);
+  static Future<double> getAverageCost(String productName) async {
+    final history = await getCostHistory(productName);
     return CostEntryModel.calcularCostoPromedio(history);
   }
 
@@ -55,7 +76,21 @@ class CostsSheetsApi {
   /// Registra una nueva entrada de costo en la hoja Historial_Costos.
   static Future<void> addCostEntry(CostEntryModel entry) async {
     await _init();
-    final valueRange = sheets.ValueRange(values: [entry.toRow()]);
+    final nextId = await _getNextId(AppConstants.costHistoryRange);
+    
+    final finalEntry = CostEntryModel(
+      costoId:       nextId,
+      productName:   entry.productName,
+      fecha:         entry.fecha,
+      costoUnitario: entry.costoUnitario,
+      cantidad:      entry.cantidad,
+      tipoOrigen:    entry.tipoOrigen,
+      movimientoId:  entry.movimientoId,
+      usuarioNombre: entry.usuarioNombre,
+      observacion:   entry.observacion,
+    );
+
+    final valueRange = sheets.ValueRange(values: [finalEntry.toRow()]);
     await _sheetsApi!.spreadsheets.values.append(
       valueRange,
       AppConstants.spreadsheetId,
@@ -67,7 +102,7 @@ class CostsSheetsApi {
   /// Actualiza el campo `costoPromedio` (columna H) en la hoja Productos
   /// tras registrar una nueva entrada de costo.
   static Future<void> updateProductAverageCost({
-    required String skuId,
+    required String productName,
     required double newAverage,
     required int productRowIndex, // fila real en la hoja (1-indexed)
   }) async {
@@ -81,16 +116,16 @@ class CostsSheetsApi {
     );
   }
 
-  /// Encuentra la fila de un producto en la hoja Productos por skuId.
-  static Future<int> findProductRowIndex(String skuId) async {
+  /// Encuentra la fila de un producto en la hoja Productos por su nombre.
+  static Future<int> findProductRowIndex(String productName) async {
     await _init();
     final response = await _sheetsApi!.spreadsheets.values.get(
       AppConstants.spreadsheetId,
-      'Productos!A2:A',
+      'Productos!B2:B', // Columna B es Nombre
     );
     final rows = response.values ?? [];
     for (int i = 0; i < rows.length; i++) {
-      if (rows[i].isNotEmpty && rows[i][0].toString() == skuId) {
+      if (rows[i].isNotEmpty && rows[i][0].toString() == productName) {
         return i + 2;
       }
     }

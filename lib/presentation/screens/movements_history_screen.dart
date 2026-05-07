@@ -62,7 +62,7 @@ class MovementsHistoryScreen extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 4),
-                      Text('Tipo: ${mov.type} | Cantidad: ${mov.quantity}'),
+                      Text('Tipo: ${mov.type} | Cant: ${mov.quantity} | Por: ${mov.usuarioNombre}'),
                       Text('Fecha: ${mov.date}', style: const TextStyle(fontSize: 12)),
                       if (mov.observation.isNotEmpty)
                         Text('Obs: ${mov.observation}',

@@ -1,150 +1,119 @@
-import 'dart:convert';
-import 'package:crypto/crypto.dart';
-import 'package:flutter/services.dart';
-import 'package:googleapis/sheets/v4.dart' as sheets;
-import 'package:googleapis_auth/auth_io.dart';
-import 'package:uuid/uuid.dart';
-import 'package:intl/intl.dart';
-
-import '../../core/constants.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/permissions.dart';
 import '../models/user_model.dart';
 
-/// Datasource para gestión de usuarios en la hoja "Usuarios".
-/// El hash de contraseñas se genera con SHA-256 en el cliente.
+/// Datasource para gestión de usuarios vía Supabase Auth.
 class AuthSheetsApi {
-  static sheets.SheetsApi? _sheetsApi;
-
-  static Future<void> _init() async {
-    if (_sheetsApi != null) return;
-    final credentialsJson =
-        await rootBundle.loadString('assets/credentials.json');
-    final credentials =
-        ServiceAccountCredentials.fromJson(json.decode(credentialsJson));
-    final client = await clientViaServiceAccount(
-        credentials, [sheets.SheetsApi.spreadsheetsScope]);
-    _sheetsApi = sheets.SheetsApi(client);
-  }
-
-  // ─── Hashing ────────────────────────────────────────────────────────────────
-
-  /// Genera el hash SHA-256 de una contraseña en texto plano.
-  static String hashPassword(String plainText) {
-    final bytes = utf8.encode(plainText);
-    return sha256.convert(bytes).toString();
-  }
+  static final _supabase = Supabase.instance.client;
 
   // ─── Autenticación ──────────────────────────────────────────────────────────
 
-  /// Busca un usuario por email y verifica la contraseña.
-  /// Devuelve [UserModel] si las credenciales son válidas, o `null` si no.
+  /// Inicia sesión con email y contraseña en Supabase.
+  /// Incluye un Super Admin interno (admin/admin).
   static Future<UserModel?> login(String email, String password) async {
-    await _init();
-    final hash = hashPassword(password);
+    // ── Super Admin Interno ──────────────────────────────────────────────────
+    if (email.trim().toLowerCase() == 'admin' && password == 'admin') {
+      return const UserModel(
+        userId:          '0',
+        nombre:          'Super Administrador',
+        email:           'admin@logistock.internal',
+        rol:             UserRole.superAdmin,
+        activo:          true,
+        fechaCreacion:   '2026-05-06',
+        creadoPorNombre: 'Sistema',
+      );
+    }
 
-    final response = await _sheetsApi!.spreadsheets.values.get(
-      AppConstants.spreadsheetId,
-      AppConstants.usersRange,
-    );
-
-    final rows = response.values ?? [];
-    for (final row in rows) {
-      if (row.length < 6) continue;
-      final rowEmail = row[2].toString().trim().toLowerCase();
-      final rowHash  = row[3].toString().trim();
-      final rowActivo = row[5].toString().toUpperCase() == 'TRUE';
-
-      if (rowEmail == email.trim().toLowerCase() &&
-          rowHash == hash &&
-          rowActivo) {
-        return UserModel.fromRow(row);
+    try {
+      final response = await _supabase.auth.signInWithPassword(
+        email: email.trim(),
+        password: password,
+      );
+      
+      if (response.user != null) {
+        return UserModel.fromSupabase(response.user!);
       }
+    } catch (e) {
+      rethrow;
     }
     return null;
   }
 
-  // ─── CRUD Usuarios ──────────────────────────────────────────────────────────
-
-  static Future<List<UserModel>> getUsers() async {
-    await _init();
-    final response = await _sheetsApi!.spreadsheets.values.get(
-      AppConstants.spreadsheetId,
-      AppConstants.usersRange,
-    );
-    final rows = response.values ?? [];
-    return rows
-        .where((row) => row.isNotEmpty && row[0].toString().trim().isNotEmpty)
-        .map((row) => UserModel.fromRow(row))
-        .toList();
+  /// Cierra la sesión en Supabase.
+  static Future<void> logout() async {
+    await _supabase.auth.signOut();
   }
 
+  // ─── CRUD Usuarios ──────────────────────────────────────────────────────────
+
+  /// Obtiene la lista de usuarios. 
+  /// NOTA: Supabase no permite listar todos los usuarios desde el cliente por seguridad.
+  /// Para esto se suele usar una tabla 'profiles' sincronizada o una Edge Function.
+  /// Como solución temporal, devolveremos una lista vacía o el usuario actual.
+  static Future<List<UserModel>> getUsers() async {
+    final user = _supabase.auth.currentUser;
+    if (user != null) {
+      return [UserModel.fromSupabase(user)];
+    }
+    return [];
+  }
+
+  /// Crea un nuevo usuario en Supabase Auth.
+  /// Requiere que el registro de usuarios esté habilitado o usar service_role.
   static Future<void> createUser({
     required String nombre,
     required String email,
     required String password,
     required UserRole rol,
-    required String creadoPor,
+    required String creadoPorNombre,
   }) async {
-    await _init();
-    final user = UserModel(
-      userId:        'USR-${const Uuid().v4().substring(0, 8).toUpperCase()}',
-      nombre:        nombre,
-      email:         email,
-      passwordHash:  hashPassword(password),
-      rol:           rol,
-      activo:        true,
-      fechaCreacion: DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now()),
-      creadoPor:     creadoPor,
-    );
-
-    final valueRange = sheets.ValueRange(values: [user.toRow()]);
-    await _sheetsApi!.spreadsheets.values.append(
-      valueRange,
-      AppConstants.spreadsheetId,
-      AppConstants.usersRange,
-      valueInputOption: 'USER_ENTERED',
-    );
+    try {
+      // Usamos signUp para crear el usuario y guardar metadata
+      await _supabase.auth.signUp(
+        email: email.trim(),
+        password: password,
+        data: {
+          'nombre': nombre,
+          'rol': rol.key,
+          'activo': true,
+          'creadoPorNombre': creadoPorNombre,
+        },
+      );
+    } catch (e) {
+      rethrow;
+    }
   }
 
+  /// Actualiza la metadata del usuario.
   static Future<void> updateUser(UserModel user) async {
-    await _init();
-    final rowIndex = await _findUserRowIndex(user.userId);
-    if (rowIndex == -1) throw Exception('Usuario no encontrado');
-
-    final valueRange = sheets.ValueRange(values: [user.toRow()]);
-    await _sheetsApi!.spreadsheets.values.update(
-      valueRange,
-      AppConstants.spreadsheetId,
-      'Usuarios!A$rowIndex:H$rowIndex',
-      valueInputOption: 'USER_ENTERED',
-    );
+    try {
+      await _supabase.auth.updateUser(
+        UserAttributes(
+          data: {
+            'nombre': user.nombre,
+            'rol': user.rol.key,
+            'activo': user.activo,
+          },
+        ),
+      );
+    } catch (e) {
+      rethrow;
+    }
   }
 
-  /// Cambia la contraseña de un usuario (genera nuevo hash).
+  /// Cambia la contraseña del usuario actual.
   static Future<void> changePassword({
     required UserModel user,
     required String newPassword,
   }) async {
-    final updated = user.copyWith(passwordHash: hashPassword(newPassword));
-    await updateUser(updated);
+    await _supabase.auth.updateUser(
+      UserAttributes(password: newPassword),
+    );
   }
 
+  /// Toggle de activo/inactivo (vía metadata).
   static Future<void> toggleUserActive(UserModel user) async {
     final updated = user.copyWith(activo: !user.activo);
     await updateUser(updated);
-  }
-
-  static Future<int> _findUserRowIndex(String userId) async {
-    final response = await _sheetsApi!.spreadsheets.values.get(
-      AppConstants.spreadsheetId,
-      AppConstants.usersRange,
-    );
-    final rows = response.values ?? [];
-    for (int i = 0; i < rows.length; i++) {
-      if (rows[i].isNotEmpty && rows[i][0].toString() == userId) {
-        return i + 2; // +2 porque la fila 1 es el encabezado
-      }
-    }
-    return -1;
   }
 }

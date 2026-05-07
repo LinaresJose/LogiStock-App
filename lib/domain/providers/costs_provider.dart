@@ -8,17 +8,17 @@ import 'auth_provider.dart';
 
 // ─── Provider de historial por producto (familia) ─────────────────────────────
 
-/// Historial de costos para un SKU específico.
-/// Uso: `ref.watch(costHistoryProvider('ABCD001'))`
+/// Historial de costos para un Producto específico.
+/// Uso: `ref.watch(costHistoryProvider('Coca Cola'))`
 final costHistoryProvider =
-    FutureProvider.family<List<CostEntryModel>, String>((ref, skuId) async {
-  return await CostsSheetsApi.getCostHistory(skuId);
+    FutureProvider.family<List<CostEntryModel>, String>((ref, productName) async {
+  return await CostsSheetsApi.getCostHistory(productName);
 });
 
-/// Costo promedio ponderado para un SKU específico.
+/// Costo promedio ponderado para un Producto específico.
 final averageCostProvider =
-    FutureProvider.family<double, String>((ref, skuId) async {
-  return await CostsSheetsApi.getAverageCost(skuId);
+    FutureProvider.family<double, String>((ref, productName) async {
+  return await CostsSheetsApi.getAverageCost(productName);
 });
 
 /// Todas las entradas del historial de costos (para reportes de admin).
@@ -40,14 +40,14 @@ class CostsController {
 
   /// Registra una entrada de costo y actualiza el costo promedio en Productos.
   ///
-  /// [skuId]         — SKU del producto.
+  /// [productName]   — Nombre del producto.
   /// [costoUnitario] — Precio unitario de compra.
   /// [cantidad]      — Unidades recibidas.
   /// [tipoOrigen]    — 'nuevo_producto' o 'entrada_stock'.
   /// [movimientoId]  — ID del movimiento asociado (puede estar vacío si es alta de producto).
   /// [observacion]   — Nota libre opcional.
   Future<void> addCostEntry({
-    required String skuId,
+    required String productName,
     required double costoUnitario,
     required int cantidad,
     required String tipoOrigen,
@@ -57,14 +57,14 @@ class CostsController {
     final currentUser = _ref.read(currentUserProvider);
 
     final entry = CostEntryModel(
-      costoId:       'CST-${const Uuid().v4().substring(0, 8).toUpperCase()}',
-      skuId:         skuId,
+      costoId:       '', // El API generará el auto-incremento
+      productName:   productName,
       fecha:         DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now()),
       costoUnitario: costoUnitario,
       cantidad:      cantidad,
       tipoOrigen:    tipoOrigen,
       movimientoId:  movimientoId,
-      usuarioId:     currentUser?.userId ?? 'sistema',
+      usuarioNombre: currentUser?.nombre ?? 'Sistema',
       observacion:   observacion,
     );
 
@@ -72,20 +72,20 @@ class CostsController {
     await CostsSheetsApi.addCostEntry(entry);
 
     // 2. Recalcular costo promedio y actualizarlo en la hoja Productos
-    final history = await CostsSheetsApi.getCostHistory(skuId);
+    final history = await CostsSheetsApi.getCostHistory(productName);
     final newAverage = CostEntryModel.calcularCostoPromedio(history);
-    final rowIndex = await CostsSheetsApi.findProductRowIndex(skuId);
+    final rowIndex = await CostsSheetsApi.findProductRowIndex(productName);
     if (rowIndex != -1) {
       await CostsSheetsApi.updateProductAverageCost(
-        skuId:            skuId,
+        productName:      productName,
         newAverage:       newAverage,
         productRowIndex:  rowIndex,
       );
     }
 
     // 3. Invalidar providers afectados
-    _ref.invalidate(costHistoryProvider(skuId));
-    _ref.invalidate(averageCostProvider(skuId));
+    _ref.invalidate(costHistoryProvider(productName));
+    _ref.invalidate(averageCostProvider(productName));
     _ref.invalidate(allCostEntriesProvider);
   }
 }

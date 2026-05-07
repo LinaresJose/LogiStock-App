@@ -5,7 +5,7 @@ class MovementModel {
   final String type;       // 'Entrada' o 'Salida'
   final int quantity;
   final String observation;
-  final String userId;     // Quién registró el movimiento (G)
+  final String usuarioNombre; // Quién registró el movimiento (G)
   final bool tieneCosto;   // Si se registró costo asociado (H)
 
   MovementModel({
@@ -15,7 +15,7 @@ class MovementModel {
     required this.type,
     required this.quantity,
     this.observation = '',
-    this.userId = '',
+    this.usuarioNombre = '',
     this.tieneCosto = false,
   });
 
@@ -27,7 +27,7 @@ class MovementModel {
       type:        row.length > 3 ? row[3].toString() : '',
       quantity:    row.length > 4 ? int.tryParse(row[4].toString()) ?? 0 : 0,
       observation: row.length > 5 ? row[5].toString() : '',
-      userId:      row.length > 6 ? row[6].toString() : '',
+      usuarioNombre: row.length > 6 ? row[6].toString() : '',
       tieneCosto:  row.length > 7
           ? row[7].toString().toUpperCase() == 'TRUE'
           : false,
@@ -42,7 +42,7 @@ class MovementModel {
       type,
       quantity,
       observation,
-      userId,
+      usuarioNombre,
       tieneCosto ? 'TRUE' : 'FALSE',
     ];
   }

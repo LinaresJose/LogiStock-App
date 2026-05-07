@@ -4,6 +4,7 @@ import '../../data/datasources/google_sheets_api.dart';
 import '../../data/models/category.dart';
 import '../../data/models/product.dart';
 import '../../data/models/movement.dart';
+import 'auth_provider.dart';
 
 // Provider para Categorías
 final categoriesProvider = FutureProvider<List<CategoryModel>>((ref) async {
@@ -74,7 +75,20 @@ class InventoryController {
   InventoryController(this._ref);
 
   Future<void> addMovement(MovementModel movement) async {
-    await GoogleSheetsApi.addMovement(movement);
+    final currentUser = _ref.read(currentUserProvider);
+    
+    final finalMovement = MovementModel(
+      id:            '', // El API generará el auto-incremento
+      date:          movement.date,
+      productName:   movement.productName,
+      type:          movement.type,
+      quantity:      movement.quantity,
+      observation:   movement.observation,
+      usuarioNombre: currentUser?.nombre ?? 'Sistema',
+      tieneCosto:    movement.tieneCosto,
+    );
+
+    await GoogleSheetsApi.addMovement(finalMovement);
     _ref.invalidate(movementsProvider);
     _ref.invalidate(productsProvider);
   }

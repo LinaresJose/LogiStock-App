@@ -184,6 +184,11 @@ class _UserCard extends ConsumerWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            Text(
+              'Creado por: ${user.creadoPorNombre} el ${user.fechaCreacion}',
+              style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+            ),
           ],
         ),
         trailing: PopupMenuButton<String>(

@@ -54,7 +54,7 @@ class CostsReportScreen extends ConsumerWidget {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'SKU: ${cost.skuId}',
+                            'Producto: ${cost.productName}',
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                           Container(

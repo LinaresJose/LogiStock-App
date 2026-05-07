@@ -19,6 +19,27 @@ class GoogleSheetsApi {
     _sheetsApi = sheets.SheetsApi(client);
   }
 
+  // ── Auxiliares ──────────────────────────────────────────────────────────────
+
+  static Future<String> _getNextId(String range) async {
+    if (_sheetsApi == null) await init();
+    final response = await _sheetsApi!.spreadsheets.values.get(
+      AppConstants.spreadsheetId,
+      range,
+    );
+    final rows = response.values ?? [];
+    if (rows.isEmpty) return '1';
+
+    int maxId = 0;
+    for (var row in rows) {
+      if (row.isNotEmpty) {
+        final id = int.tryParse(row[0].toString()) ?? 0;
+        if (id > maxId) maxId = id;
+      }
+    }
+    return (maxId + 1).toString();
+  }
+
   // ── Lecturas ────────────────────────────────────────────────────────────────
 
   static Future<List<CategoryModel>> getCategories() async {
@@ -51,7 +72,7 @@ class GoogleSheetsApi {
     if (_sheetsApi == null) await init();
     final response = await _sheetsApi!.spreadsheets.values.get(
       AppConstants.spreadsheetId,
-      AppConstants.movementsRange, // A2:H (incluye userId, tieneCosto)
+      AppConstants.movementsRange, // A2:H (incluye usuarioNombre, tieneCosto)
     );
     final rows = response.values ?? [];
     return rows
@@ -64,7 +85,21 @@ class GoogleSheetsApi {
 
   static Future<void> addMovement(MovementModel movement) async {
     if (_sheetsApi == null) await init();
-    final valueRange = sheets.ValueRange(values: [movement.toRow()]);
+    final nextId = await _getNextId(AppConstants.movementsRange);
+    
+    // Crear copia con el nuevo ID
+    final finalMovement = MovementModel(
+      id:            nextId,
+      date:          movement.date,
+      productName:   movement.productName,
+      type:          movement.type,
+      quantity:      movement.quantity,
+      observation:   movement.observation,
+      usuarioNombre: movement.usuarioNombre,
+      tieneCosto:    movement.tieneCosto,
+    );
+
+    final valueRange = sheets.ValueRange(values: [finalMovement.toRow()]);
     await _sheetsApi!.spreadsheets.values.append(
       valueRange,
       AppConstants.spreadsheetId,
@@ -89,7 +124,14 @@ class GoogleSheetsApi {
 
   static Future<void> addCategory(CategoryModel category) async {
     if (_sheetsApi == null) await init();
-    final valueRange = sheets.ValueRange(values: [category.toRow()]);
+    final nextId = await _getNextId(AppConstants.categoriesRange);
+    
+    final finalCategory = CategoryModel(
+      id: nextId,
+      name: category.name,
+    );
+
+    final valueRange = sheets.ValueRange(values: [finalCategory.toRow()]);
     await _sheetsApi!.spreadsheets.values.append(
       valueRange,
       AppConstants.spreadsheetId,
@@ -139,7 +181,20 @@ class GoogleSheetsApi {
 
   static Future<void> addProduct(ProductModel product) async {
     if (_sheetsApi == null) await init();
-    final valueRange = sheets.ValueRange(values: [product.toRow()]);
+    final nextId = await _getNextId(AppConstants.productsRange);
+    
+    final finalProduct = ProductModel(
+      skuId:         nextId,
+      name:          product.name,
+      categoryId:    product.categoryId,
+      image:         product.image,
+      minStock:      product.minStock,
+      leadTime:      product.leadTime,
+      initialStock:  product.initialStock,
+      costoPromedio: product.costoPromedio,
+    );
+
+    final valueRange = sheets.ValueRange(values: [finalProduct.toRow()]);
     await _sheetsApi!.spreadsheets.values.append(
       valueRange,
       AppConstants.spreadsheetId,
