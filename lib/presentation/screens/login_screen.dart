@@ -170,7 +170,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               if (v == null || v.trim().isEmpty) {
                                 return 'Ingresa tu correo';
                               }
-                              if (!v.contains('@')) return 'Correo inválido';
+                              if (!v.contains('@') && v.trim() != 'admin') return 'Correo inválido';
                               return null;
                             },
                           ),

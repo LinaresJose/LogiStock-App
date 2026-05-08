@@ -181,10 +181,10 @@ class GoogleSheetsApi {
 
   static Future<void> addProduct(ProductModel product) async {
     if (_sheetsApi == null) await init();
-    final nextId = await _getNextId(AppConstants.productsRange);
     
+    // Usamos el skuId que viene del formulario (autogenerado en UI)
     final finalProduct = ProductModel(
-      skuId:         nextId,
+      skuId:         product.skuId,
       name:          product.name,
       categoryId:    product.categoryId,
       image:         product.image,
@@ -211,7 +211,7 @@ class GoogleSheetsApi {
     await _sheetsApi!.spreadsheets.values.update(
       valueRange,
       AppConstants.spreadsheetId,
-      'Productos!A$rowIndex:H$rowIndex', // ampliado a H
+      'Productos!A$rowIndex:G$rowIndex', // Reducido a G
       valueInputOption: 'USER_ENTERED',
     );
   }
@@ -224,7 +224,7 @@ class GoogleSheetsApi {
     await _sheetsApi!.spreadsheets.values.clear(
       request,
       AppConstants.spreadsheetId,
-      'Productos!A$rowIndex:H$rowIndex', // ampliado a H
+      'Productos!A$rowIndex:G$rowIndex', // Reducido a G
     );
   }
 }

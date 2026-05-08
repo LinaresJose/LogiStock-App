@@ -35,6 +35,19 @@ class UserModel {
     );
   }
 
+  /// Crea un UserModel a partir de un Map (desde la tabla profiles de Supabase).
+  factory UserModel.fromMap(Map<String, dynamic> map) {
+    return UserModel(
+      userId:          map['id'] ?? '',
+      nombre:          map['nombre'] ?? 'Usuario',
+      email:           map['email'] ?? '',
+      rol:             UserRoleLabel.fromKey(map['rol'] ?? 'consulta'),
+      activo:          map['activo'] ?? true,
+      fechaCreacion:   map['updated_at'] ?? '',
+      creadoPorNombre: 'sistema',
+    );
+  }
+
   /// Crea un UserModel a partir de una fila de Google Sheets (Legacy).
   factory UserModel.fromRow(List<dynamic> row) {
     return UserModel(

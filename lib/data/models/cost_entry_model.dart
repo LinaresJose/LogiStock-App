@@ -1,3 +1,5 @@
+import '../../core/utils/string_utils.dart';
+
 /// Modelo que representa una entrada en el historial de costos
 /// (hoja: Historial_Costos)
 class CostEntryModel {
@@ -46,14 +48,14 @@ class CostEntryModel {
   List<dynamic> toRow() {
     return [
       costoId,
-      productName,
+      productName, // Ya viene capitalizado del modelo Product
       fecha,
       costoUnitario,
       cantidad,
       tipoOrigen,
       movimientoId,
       usuarioNombre,
-      observacion,
+      StringExtensions.capitalize(observacion),
     ];
   }
 

@@ -1,13 +1,14 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
 
 import '../../data/models/product.dart';
 import '../../domain/providers/inventory_provider.dart';
 import '../../domain/providers/auth_provider.dart';
 import '../../domain/providers/costs_provider.dart';
+import '../../data/datasources/supabase_storage_api.dart';
 
 class ProductFormScreen extends ConsumerStatefulWidget {
   final ProductWithStock? productWithStock;
@@ -24,7 +25,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   late TextEditingController _skuController;
   late TextEditingController _nameController;
   String? _selectedCategoryId;
-  late TextEditingController _imageController;
+  String? _existingImageUrl;
+  XFile? _pickedFile;
   late TextEditingController _minStockController;
   late TextEditingController _leadTimeController;
   late TextEditingController _initialStockController;
@@ -33,6 +35,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   bool _registrarCosto = false;
 
   bool _isLoading = false;
+  bool _imageWasDeleted = false; // Nueva bandera
   final ImagePicker _picker = ImagePicker();
 
   @override
@@ -42,7 +45,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     _skuController          = TextEditingController(text: p?.skuId ?? '');
     _nameController         = TextEditingController(text: p?.name ?? '');
     _selectedCategoryId     = p?.categoryId;
-    _imageController        = TextEditingController(text: p?.image ?? '');
+    _existingImageUrl       = p?.image;
     _minStockController     = TextEditingController(text: p?.minStock.toString() ?? '0');
     _leadTimeController     = TextEditingController(text: p?.leadTime.toString() ?? '0');
     _initialStockController = TextEditingController(text: p?.initialStock.toString() ?? '0');
@@ -73,7 +76,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       final XFile? pickedFile = await _picker.pickImage(
         source: source, maxWidth: 800, maxHeight: 800, imageQuality: 85);
       if (pickedFile != null) {
-        setState(() => _imageController.text = pickedFile.path);
+        setState(() {
+          _pickedFile = pickedFile;
+          _imageWasDeleted = false;
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -107,7 +113,6 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   void dispose() {
     _skuController.dispose();
     _nameController.dispose();
-    _imageController.dispose();
     _minStockController.dispose();
     _leadTimeController.dispose();
     _initialStockController.dispose();
@@ -119,17 +124,36 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     if (_formKey.currentState!.validate() && _selectedCategoryId != null) {
       setState(() => _isLoading = true);
 
-      final newProduct = ProductModel(
-        skuId:        _skuController.text.trim(),
-        name:         _nameController.text.trim(),
-        categoryId:   _selectedCategoryId!,
-        image:        _imageController.text.trim(),
-        minStock:     int.tryParse(_minStockController.text) ?? 0,
-        leadTime:     int.tryParse(_leadTimeController.text) ?? 0,
-        initialStock: int.tryParse(_initialStockController.text) ?? 0,
-      );
+      String finalImageUrl = _existingImageUrl ?? '';
 
       try {
+        // 1. Si el usuario marcó para borrar y no hay nueva imagen seleccionada
+        if (_imageWasDeleted && _pickedFile == null) {
+          await SupabaseStorageApi.deleteProductImage(_skuController.text.trim());
+          finalImageUrl = '';
+        }
+        // 2. Si se seleccionó una nueva imagen, extraer bytes y subir a Supabase
+        else if (_pickedFile != null) {
+          final Uint8List bytes = await _pickedFile!.readAsBytes();
+          final String skuId    = _skuController.text.trim();
+          final String extension = p.extension(_pickedFile!.name);
+          
+          finalImageUrl = await SupabaseStorageApi.uploadProductImage(
+            bytes:    bytes,
+            fileName: '$skuId$extension',
+          );
+        }
+
+        final newProduct = ProductModel(
+          skuId: _skuController.text.trim(),
+          name: _nameController.text.trim(),
+          categoryId: _selectedCategoryId!,
+          image: finalImageUrl,
+          minStock: int.tryParse(_minStockController.text) ?? 0,
+          leadTime: int.tryParse(_leadTimeController.text) ?? 0,
+          initialStock: int.tryParse(_initialStockController.text) ?? 0,
+        );
+
         if (widget.productWithStock == null) {
           await ref.read(inventoryControllerProvider).addProduct(newProduct);
 
@@ -139,7 +163,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
             final cantidad = int.tryParse(_initialStockController.text) ?? 0;
             if (costo > 0 && cantidad > 0) {
               await ref.read(costsControllerProvider).addCostEntry(
-                skuId:        newProduct.skuId,
+                productName:  newProduct.name,
                 costoUnitario: costo,
                 cantidad:     cantidad,
                 tipoOrigen:   'nuevo_producto',
@@ -196,34 +220,55 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                 children: [
                   // ── Imagen ─────────────────────────────────────────────
                   Center(
-                    child: GestureDetector(
-                      onTap: () => _showImageSourceActionSheet(context),
-                      child: Container(
-                        height: 150,
-                        width: 150,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[200],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey[300]!),
+                    child: Stack(
+                      children: [
+                        GestureDetector(
+                          onTap: () => _showImageSourceActionSheet(context),
+                          child: Container(
+                            height: 150,
+                            width: 150,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[200],
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.grey[300]!),
+                            ),
+                            child: _pickedFile == null && (_existingImageUrl == null || _existingImageUrl!.isEmpty)
+                                ? const Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.add_a_photo, size: 40, color: Colors.grey),
+                                      SizedBox(height: 8),
+                                      Text('Añadir Foto', style: TextStyle(color: Colors.grey)),
+                                    ],
+                                  )
+                                : ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: _pickedFile != null
+                                        ? Image.network(_pickedFile!.path, fit: BoxFit.cover) // En Web, path es un blob URL
+                                        : Image.network(_existingImageUrl!, fit: BoxFit.cover),
+                                  ),
+                          ),
                         ),
-                        child: _imageController.text.isEmpty
-                            ? const Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.add_a_photo, size: 40, color: Colors.grey),
-                                  SizedBox(height: 8),
-                                  Text('Añadir Foto', style: TextStyle(color: Colors.grey)),
-                                ],
-                              )
-                            : ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: _imageController.text.startsWith('http')
-                                    ? Image.network(_imageController.text, fit: BoxFit.cover)
-                                    : (kIsWeb
-                                        ? Image.network(_imageController.text, fit: BoxFit.cover)
-                                        : Image.file(File(_imageController.text), fit: BoxFit.cover)),
+                        if (_pickedFile != null || (_existingImageUrl != null && _existingImageUrl!.isNotEmpty))
+                          Positioned(
+                            top: 0,
+                            right: 0,
+                            child: IconButton(
+                              icon: const CircleAvatar(
+                                radius: 14,
+                                backgroundColor: Colors.red,
+                                child: Icon(Icons.close, size: 18, color: Colors.white),
                               ),
-                      ),
+                              onPressed: () {
+                                setState(() {
+                                  _pickedFile = null;
+                                  _existingImageUrl = null;
+                                  _imageWasDeleted = true;
+                                });
+                              },
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -255,14 +300,6 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                     validator: (v) => v == null ? 'Selecciona una categoría' : null,
                   ),
                   const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _imageController,
-                    decoration: const InputDecoration(
-                      labelText: 'URL de Imagen o Ruta',
-                      border: OutlineInputBorder(),
-                      helperText: 'Puedes usar la cámara arriba o pegar una URL aquí',
-                    ),
-                  ),
                   const SizedBox(height: 16),
                   Row(children: [
                     Expanded(
@@ -271,6 +308,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                         decoration: const InputDecoration(
                             labelText: 'Stock Mínimo', border: OutlineInputBorder()),
                         keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                         validator: (v) => (v == null || v.isEmpty) ? 'Requerido' : null,
                       ),
                     ),
@@ -282,6 +320,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                             labelText: 'Lead Time (días)',
                             border: OutlineInputBorder()),
                         keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                         validator: (v) => (v == null || v.isEmpty) ? 'Requerido' : null,
                       ),
                     ),
@@ -292,6 +331,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                     decoration: const InputDecoration(
                         labelText: 'Stock Inicial', border: OutlineInputBorder()),
                     keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     enabled: !isEditing,
                     validator: (v) => (v == null || v.isEmpty) ? 'Requerido' : null,
                   ),

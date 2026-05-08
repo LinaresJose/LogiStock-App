@@ -15,20 +15,17 @@ class CategoryFormScreen extends ConsumerStatefulWidget {
 
 class _CategoryFormScreenState extends ConsumerState<CategoryFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  late TextEditingController _idController;
   late TextEditingController _nameController;
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _idController = TextEditingController(text: widget.category?.id ?? '');
     _nameController = TextEditingController(text: widget.category?.name ?? '');
   }
 
   @override
   void dispose() {
-    _idController.dispose();
     _nameController.dispose();
     super.dispose();
   }
@@ -38,7 +35,7 @@ class _CategoryFormScreenState extends ConsumerState<CategoryFormScreen> {
       setState(() => _isLoading = true);
 
       final newCategory = CategoryModel(
-        id: _idController.text.trim(),
+        id: widget.category?.id ?? '', // Si es nueva, el API genera el ID
         name: _nameController.text.trim(),
       );
 
@@ -84,20 +81,6 @@ class _CategoryFormScreenState extends ConsumerState<CategoryFormScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextFormField(
-                controller: _idController,
-                decoration: const InputDecoration(
-                  labelText: 'ID de Categoría',
-                  border: OutlineInputBorder(),
-                ),
-                enabled: !isEditing, // No permitir cambiar ID en edición
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'El ID es requerido';
-                  }
-                  return null;
-                },
-              ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _nameController,

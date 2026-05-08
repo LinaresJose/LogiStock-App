@@ -1,3 +1,5 @@
+import '../../core/utils/string_utils.dart';
+
 class MovementModel {
   final String id;
   final String date;
@@ -38,10 +40,10 @@ class MovementModel {
     return [
       id,
       date,
-      productName,
+      productName, // Ya se capitaliza al guardar producto, pero por si acaso
       type,
       quantity,
-      observation,
+      StringExtensions.capitalize(observation),
       usuarioNombre,
       tieneCosto ? 'TRUE' : 'FALSE',
     ];

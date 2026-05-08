@@ -81,7 +81,7 @@ class _AddMovementScreenState extends ConsumerState<AddMovementScreen> {
       type:        _selectedType,
       quantity:    int.parse(_quantityController.text),
       observation: _observationController.text.trim(),
-      userId:      currentUser?.userId ?? '',
+      usuarioNombre: currentUser?.nombre ?? 'Sistema',
       tieneCosto:  hasCoste,
     );
 
@@ -95,7 +95,7 @@ class _AddMovementScreenState extends ConsumerState<AddMovementScreen> {
         final cantidad = int.tryParse(_quantityController.text) ?? 0;
         if (costo > 0 && cantidad > 0) {
           await ref.read(costsControllerProvider).addCostEntry(
-            skuId:         _selectedSku!,
+            productName:   _selectedProductName!,
             costoUnitario: costo,
             cantidad:      cantidad,
             tipoOrigen:    'entrada_stock',

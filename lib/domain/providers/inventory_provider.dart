@@ -5,6 +5,7 @@ import '../../data/models/category.dart';
 import '../../data/models/product.dart';
 import '../../data/models/movement.dart';
 import 'auth_provider.dart';
+import '../../data/datasources/supabase_storage_api.dart';
 
 // Provider para Categorías
 final categoriesProvider = FutureProvider<List<CategoryModel>>((ref) async {
@@ -29,22 +30,31 @@ class ProductWithStock {
   });
 }
 
-// Provider para Productos (depende de movimientos para calcular stock)
-final productsProvider = FutureProvider<List<ProductWithStock>>((ref) async {
-  final products = await GoogleSheetsApi.getProducts();
-  final movementsAsync = ref.watch(movementsProvider);
 
-  // Si los movimientos aún no cargan o hay error, solo usamos stock inicial
+// Provider para Productos (depende de movimientos para calcular stock e imágenes de Supabase)
+final productsProvider = FutureProvider<List<ProductWithStock>>((ref) async {
+  // 1. Cargar productos de Sheets e imágenes de Supabase en paralelo
+  final results = await Future.wait([
+    GoogleSheetsApi.getProducts(),
+    SupabaseStorageApi.getAllProductImages(),
+  ]);
+
+  final List<ProductModel> products = results[0] as List<ProductModel>;
+  final Map<String, String> imageMap = results[1] as Map<String, String>;
+  
+  final movementsAsync = ref.watch(movementsProvider);
   final movements = movementsAsync.value ?? [];
 
   return products.map((product) {
-    // Calcular Entradas y Salidas
+    // 2. Asociar la imagen de Supabase al producto
+    final updatedProduct = product.copyWithImage(imageMap[product.skuId] ?? '');
+
+    // 3. Calcular Entradas y Salidas
     int totalIn = 0;
     int totalOut = 0;
 
     for (var mov in movements) {
-      if (mov.productName == product.name) {
-
+      if (mov.productName == updatedProduct.name) {
         if (mov.type.toLowerCase() == 'entrada') {
           totalIn += mov.quantity;
         } else if (mov.type.toLowerCase() == 'salida') {
@@ -53,11 +63,11 @@ final productsProvider = FutureProvider<List<ProductWithStock>>((ref) async {
       }
     }
 
-    final currentStock = product.initialStock + totalIn - totalOut;
-    final isLowStock = currentStock <= product.minStock;
+    final currentStock = updatedProduct.initialStock + totalIn - totalOut;
+    final isLowStock = currentStock <= updatedProduct.minStock;
 
     return ProductWithStock(
-      product: product,
+      product: updatedProduct,
       currentStock: currentStock,
       isLowStock: isLowStock,
     );
