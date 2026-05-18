@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/permissions.dart';
 import '../../data/models/user_model.dart';
 import '../../data/datasources/auth_sheets_api.dart';
@@ -53,10 +52,12 @@ class AuthController {
         return 'Credenciales incorrectas o usuario inactivo';
       }
 
-      // Si es el admin interno, guardar bandera para persistencia
+      final prefs = await SharedPreferences.getInstance();
       if (user.userId == '0') {
-        final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('internal_admin_logged_in', true);
+      } else {
+        // Guardar email para persistencia local de la sesión sin Supabase
+        await prefs.setString('saved_user_email', user.email);
       }
 
       _ref.read(currentUserProvider.notifier).setUser(user);
@@ -70,6 +71,7 @@ class AuthController {
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('internal_admin_logged_in');
+    await prefs.remove('saved_user_email');
     
     await AuthSheetsApi.logout();
     _ref.read(currentUserProvider.notifier).setUser(null);
@@ -77,8 +79,9 @@ class AuthController {
 
   /// Intenta restaurar la sesión guardada al iniciar la app.
   Future<bool> tryRestoreSession() async {
-    // 1. Verificar si era el admin interno
     final prefs = await SharedPreferences.getInstance();
+
+    // 1. Verificar si era el admin interno
     if (prefs.getBool('internal_admin_logged_in') ?? false) {
       final user = await AuthSheetsApi.login('admin', 'admin');
       if (user != null) {
@@ -87,12 +90,23 @@ class AuthController {
       }
     }
 
-    // 2. Si no, verificar Supabase
-    final session = Supabase.instance.client.auth.currentSession;
-    if (session != null && session.user != null) {
-      final user = UserModel.fromSupabase(session.user!);
-      _ref.read(currentUserProvider.notifier).setUser(user);
-      return true;
+    // 2. Verificar si hay un usuario guardado por email
+    final savedEmail = prefs.getString('saved_user_email');
+    if (savedEmail != null && savedEmail.isNotEmpty) {
+      try {
+        final users = await AuthSheetsApi.getUsers();
+        final user = users.firstWhere(
+          (u) => u.email.trim().toLowerCase() == savedEmail.trim().toLowerCase(),
+        );
+        if (user.activo) {
+          _ref.read(currentUserProvider.notifier).setUser(user);
+          return true;
+        } else {
+          await prefs.remove('saved_user_email');
+        }
+      } catch (_) {
+        await prefs.remove('saved_user_email');
+      }
     }
     return false;
   }

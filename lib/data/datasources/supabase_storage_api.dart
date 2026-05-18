@@ -7,7 +7,32 @@ class SupabaseStorageApi {
   static const String bucketName = 'product_images';
 
   /// Sube los bytes de una imagen a Supabase Storage y devuelve la URL pública.
+  /// Auto-recuperación: Si falla por sesión de autenticación perdida, limpia y reintenta anónimamente.
   static Future<String> uploadProductImage({
+    required Uint8List bytes, 
+    required String fileName,
+  }) async {
+    try {
+      return await _uploadProductImageInternal(bytes: bytes, fileName: fileName);
+    } catch (e) {
+      final errStr = e.toString().toLowerCase();
+      if (e is AuthException || 
+          errStr.contains('authsessionmissingexception') || 
+          errStr.contains('session missing') || 
+          errStr.contains('session_missing') || 
+          errStr.contains('session expired')) {
+        // La sesión está corrupta o expiró. La limpiamos y reintentamos de forma anónima.
+        try {
+          await _supabase.auth.signOut();
+        } catch (_) {}
+        // Reintentar una vez con cliente limpio (anónimo)
+        return await _uploadProductImageInternal(bytes: bytes, fileName: fileName);
+      }
+      rethrow;
+    }
+  }
+
+  static Future<String> _uploadProductImageInternal({
     required Uint8List bytes, 
     required String fileName,
   }) async {
@@ -47,7 +72,7 @@ class SupabaseStorageApi {
       if (errStr.contains('memory') || e is OutOfMemoryError) {
         throw Exception('Error de memoria: La imagen es demasiado grande.');
       }
-      throw Exception('Error al subir imagen: $e');
+      rethrow; // Propagar para que el catch superior maneje problemas de Auth
     }
   }
 
@@ -63,7 +88,28 @@ class SupabaseStorageApi {
   }
 
   /// Elimina la imagen de un producto de Storage y de la tabla SQL.
+  /// Auto-recuperación en caso de error de sesión.
   static Future<void> deleteProductImage(String skuId) async {
+    try {
+      await _deleteProductImageInternal(skuId);
+    } catch (e) {
+      final errStr = e.toString().toLowerCase();
+      if (e is AuthException || 
+          errStr.contains('authsessionmissingexception') || 
+          errStr.contains('session missing') || 
+          errStr.contains('session_missing') || 
+          errStr.contains('session expired')) {
+        try {
+          await _supabase.auth.signOut();
+        } catch (_) {}
+        await _deleteProductImageInternal(skuId);
+        return;
+      }
+      rethrow;
+    }
+  }
+
+  static Future<void> _deleteProductImageInternal(String skuId) async {
     try {
       // 1. Obtener la ruta del archivo desde la base de datos antes de borrar la fila
       final response = await _supabase
@@ -89,8 +135,28 @@ class SupabaseStorageApi {
     }
   }
 
-  /// Obtiene un mapa de SKU -> URL de imagen desde Supabase
+  /// Obtiene un mapa de SKU -> URL de imagen desde Supabase.
+  /// Auto-recuperación en caso de error de sesión.
   static Future<Map<String, String>> getAllProductImages() async {
+    try {
+      return await _getAllProductImagesInternal();
+    } catch (e) {
+      final errStr = e.toString().toLowerCase();
+      if (e is AuthException || 
+          errStr.contains('authsessionmissingexception') || 
+          errStr.contains('session missing') || 
+          errStr.contains('session_missing') || 
+          errStr.contains('session expired')) {
+        try {
+          await _supabase.auth.signOut();
+        } catch (_) {}
+        return await _getAllProductImagesInternal();
+      }
+      return {};
+    }
+  }
+
+  static Future<Map<String, String>> _getAllProductImagesInternal() async {
     try {
       final response = await _supabase.from('product_images').select('sku_id, image_url');
       final data = response as List<dynamic>;

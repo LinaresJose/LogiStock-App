@@ -65,13 +65,13 @@ class UserModel {
     );
   }
 
-  /// Serializa el modelo a lista para escribir en Google Sheets (Legacy).
-  List<dynamic> toRow() {
+  /// Serializa el modelo a lista para escribir en Google Sheets.
+  List<dynamic> toRow({String? password}) {
     return [
       userId,
       nombre,
       email,
-      '', // passwordHash vacío
+      password ?? '', // password
       rol.key,
       activo ? 'TRUE' : 'FALSE',
       fechaCreacion,

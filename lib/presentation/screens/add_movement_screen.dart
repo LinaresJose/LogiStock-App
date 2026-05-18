@@ -18,6 +18,7 @@ class AddMovementScreen extends ConsumerStatefulWidget {
 
 class _AddMovementScreenState extends ConsumerState<AddMovementScreen> {
   final _formKey              = GlobalKey<FormState>();
+  ProductWithStock? _selectedProduct;
   String? _selectedSku;
   String? _selectedProductName;
   String  _selectedType       = 'Entrada';
@@ -44,10 +45,11 @@ class _AddMovementScreenState extends ConsumerState<AddMovementScreen> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) => _ProductSearchSheet(
         products: products,
-        onSelected: (product) {
+        onSelected: (productWithStock) {
           setState(() {
-            _selectedSku         = product.skuId;
-            _selectedProductName = product.name;
+            _selectedProduct     = productWithStock;
+            _selectedSku         = productWithStock.product.skuId;
+            _selectedProductName = productWithStock.product.name;
           });
           Navigator.pop(context);
         },
@@ -86,7 +88,7 @@ class _AddMovementScreenState extends ConsumerState<AddMovementScreen> {
     );
 
     try {
-      // 1. Guardar el movimiento
+      // 1. Guardar el movimiento (esta llamada valida la salida contra el stock en el controlador)
       await ref.read(inventoryControllerProvider).addMovement(movement);
 
       // 2. Si es una Entrada con costo, registrar en Historial_Costos
@@ -163,6 +165,24 @@ class _AddMovementScreenState extends ConsumerState<AddMovementScreen> {
                     ),
                   ),
                 ),
+                
+                // Mostrar stock disponible del producto seleccionado
+                if (_selectedProduct != null) ...[
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                    child: Text(
+                      'Stock actual disponible: ${_selectedProduct!.currentStock} unidades',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: _selectedProduct!.currentStock <= 0
+                            ? Colors.red
+                            : Colors.green.shade700,
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
 
                 // ── Tipo de movimiento ────────────────────────────────────
@@ -202,8 +222,16 @@ class _AddMovementScreenState extends ConsumerState<AddMovementScreen> {
                   keyboardType: TextInputType.number,
                   validator: (v) {
                     if (v == null || v.isEmpty) return 'Ingresa la cantidad';
-                    if (int.tryParse(v) == null) return 'Debe ser un número válido';
-                    if (int.parse(v) <= 0) return 'Debe ser mayor a cero';
+                    final qty = int.tryParse(v);
+                    if (qty == null) return 'Debe ser un número válido';
+                    if (qty <= 0) return 'Debe ser mayor a cero';
+                    
+                    // VALIDACIÓN DE STOCK DISPONIBLE PARA SALIDAS
+                    if (_selectedType == 'Salida' && _selectedProduct != null) {
+                      if (qty > _selectedProduct!.currentStock) {
+                        return 'La cantidad excede el stock disponible (${_selectedProduct!.currentStock})';
+                      }
+                    }
                     return null;
                   },
                 ),
@@ -272,8 +300,8 @@ class _AddMovementScreenState extends ConsumerState<AddMovementScreen> {
                             ),
                             validator: (v) {
                               if (_registrarCosto && v != null && v.isNotEmpty) {
-                                if (double.tryParse(v) == null) return 'Número inválido';
-                                if (double.parse(v) < 0) return 'No puede ser negativo';
+                                  if (double.tryParse(v) == null) return 'Número inválido';
+                                  if (double.parse(v) < 0) return 'No puede ser negativo';
                               }
                               return null;
                             },
@@ -310,7 +338,7 @@ class _AddMovementScreenState extends ConsumerState<AddMovementScreen> {
 
 class _ProductSearchSheet extends StatefulWidget {
   final List<ProductWithStock> products;
-  final Function(ProductModel) onSelected;
+  final Function(ProductWithStock) onSelected;
 
   const _ProductSearchSheet({required this.products, required this.onSelected});
 
@@ -355,7 +383,7 @@ class _ProductSearchSheetState extends State<_ProductSearchSheet> {
                 title: Text(item.product.name),
                 subtitle: Text(
                     'SKU: ${item.product.skuId} | Stock: ${item.currentStock}'),
-                onTap: () => widget.onSelected(item.product),
+                onTap: () => widget.onSelected(item),
               );
             },
           ),

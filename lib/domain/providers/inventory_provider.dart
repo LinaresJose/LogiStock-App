@@ -87,6 +87,20 @@ class InventoryController {
   Future<void> addMovement(MovementModel movement) async {
     final currentUser = _ref.read(currentUserProvider);
     
+    // Validación de negocio: la cantidad de salida no puede ser mayor al stock disponible
+    if (movement.type.toLowerCase() == 'salida') {
+      final productsList = await _ref.read(productsProvider.future);
+      final matchedProduct = productsList.firstWhere(
+        (p) => p.product.name == movement.productName,
+        orElse: () => throw Exception('Producto no encontrado'),
+      );
+      if (movement.quantity > matchedProduct.currentStock) {
+        throw Exception(
+          'No se puede registrar la salida. El stock disponible de "${movement.productName}" es ${matchedProduct.currentStock}, menor que la cantidad solicitada (${movement.quantity}).'
+        );
+      }
+    }
+    
     final finalMovement = MovementModel(
       id:            '', // El API generará el auto-incremento
       date:          movement.date,
